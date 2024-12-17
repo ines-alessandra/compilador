@@ -20,7 +20,7 @@ while (x < 10) {
     }
 }
 
-fun baz(i : Int, j : Int) {
+fun baz(i : Int, j : Int)  {
     val z : Int = i;
     if (z < 40) {
         z = z + i + j;
