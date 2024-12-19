@@ -101,6 +101,7 @@ class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
         self.current = 0
+        self.scope_stack = [{}]
 
     def parse(self) -> Program:
         declarations = []
@@ -108,6 +109,31 @@ class Parser:
             decl = self.declaration()
             declarations.append(decl)
         return Program(declarations)
+
+    def enter_scope(self):
+        self.scope_stack.append({})
+    def exit_scope(self):
+        self.scope_stack.pop()
+    def add_to_scope(self, name, var_type=None, is_const=False, is_function=False, params=None, return_type=None):
+        current_scope = self.scope_stack[-1]
+        if name in current_scope:
+            raise ParserError(f"Identificador '{name}' já declarado no escopo atual.", self.peek())
+        current_scope[name] = {
+            "type": var_type,
+            "is_const": is_const,
+            "is_function": is_function,
+            "params": params,
+            "return_type": return_type,
+        }
+
+    def lookup_in_scope(self, name):
+        for scope in reversed(self.scope_stack):
+            if name in scope:
+                return scope[name]
+        raise ParserError(f"Identificador '{name}' não declarado.", self.peek())
+
+
+
 
     def declaration(self) -> ASTNode:
         if self.match("VARIABLE"):  # 'val'
@@ -125,11 +151,15 @@ class Parser:
         self.consume("ASSIGN", "Esperado '=' na declaração da variável.")
         initializer = self.expression()
         self.consume("SEMICOLON", "Esperado ';' após a declaração da variável.")
+        
+        self.add_to_scope(name.value, var_type, is_const)
+        
         return VarDecl(is_const, name.value, var_type, initializer)
 
     def func_decl(self) -> FuncDecl:
         name = self.consume("IDENTIFIER", "Esperado nome da função.")
         self.consume("LPAREN", "Esperado '(' após o nome da função.")
+        
         params = []
         if not self.check("RPAREN"):
             params.append(self.parameter())
@@ -143,8 +173,21 @@ class Parser:
         else:
             return_type = "Unit"  # Tipo de retorno padrão
         
+        # Adicionar a função ao escopo atual
+        self.add_to_scope(name.value, is_function=True, params=params, return_type=return_type)
+        
+        # Entrar no escopo do corpo da função
+        self.enter_scope()
+        # Adicionar os parâmetros ao escopo da função
+        for param_name, param_type in params:
+            self.add_to_scope(param_name, var_type=param_type)
+        
         body = self.block()
+        # Sair do escopo do corpo da função
+        self.exit_scope()
+        
         return FuncDecl(name.value, params, return_type, body)
+
 
     def parameter(self) -> tuple:
         name = self.consume("IDENTIFIER", "Esperado nome do parâmetro.")
@@ -154,10 +197,12 @@ class Parser:
 
     def block(self) -> Block:
         self.consume("LBRACE", "Esperado '{' para iniciar o bloco.")
+        self.enter_scope() 
         declarations = []
         while not self.check("RBRACE") and not self.is_at_end():
             declarations.append(self.declaration())
         self.consume("RBRACE", "Esperado '}' para fechar o bloco.")
+        self.exit_scope()
         return Block(declarations)
 
     def statement(self) -> ASTNode:
@@ -278,7 +323,11 @@ class Parser:
             return Literal(False)
         if self.match("IDENTIFIER"):
             identifier = self.previous().value
-            if self.match("LPAREN"):
+            symbol = self.lookup_in_scope(identifier)
+            
+            if self.match("LPAREN"):  # É uma chamada de função
+                if not symbol.get("is_function"):
+                    raise ParserError(f"'{identifier}' não é uma função.", self.previous())
                 args = []
                 if not self.check("RPAREN"):
                     args.append(self.expression())
@@ -286,13 +335,17 @@ class Parser:
                         args.append(self.expression())
                 self.consume("RPAREN", "Esperado ')' após argumentos da função.")
                 return FuncCall(identifier, args)
-            return Identifier(identifier)
+            else:  # É uma variável
+                if symbol.get("is_function"):
+                    raise ParserError(f"'{identifier}' é uma função e não pode ser usado como variável.", self.previous())
+                return Identifier(identifier)
         if self.match("LPAREN"):
             expr = self.expression()
             self.consume("RPAREN", "Esperado ')' após expressão.")
             return expr
 
         raise ParserError("Esperada expressão válida.", self.peek())
+
 
     # Métodos auxiliares
     def match(self, *types) -> bool:

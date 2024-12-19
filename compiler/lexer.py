@@ -1,5 +1,6 @@
 import re
 from typing import List, Tuple
+from Token import Token
 
 tokens = [
     # reserved tokens
@@ -48,14 +49,13 @@ tokens = [
     (r"\b[0-9]+\b", "INTEGER"),
 ]
 
-class Token:
-    def __init__(self, type, value, line):
-        self.type = type
-        self.value = value
+class LexerError(Exception):
+    def __init__(self, message: str, line: int, column: int):
+        self.message = message
         self.line = line
-    
-    def __repr__(self):
-        return f"Token(type='{self.type}', value='{self.value}', line={self.line})"
+        self.column = column
+        super().__init__(f"{message} (linha {line}, coluna {column})")
+
 
 class Lexer:
     def __init__(self, code: str):
@@ -66,11 +66,14 @@ class Lexer:
     def tokenize(self):
         lines = self.code.split("\n")
         for i, line in enumerate(lines):
+            
             self.tokenize_line(line, i)
+            
     
     def tokenize_line(self, line: str, line_number: int):
         line_tokens = []
         line = line.strip()
+        position = 0
 
         while line:
             find = False
@@ -80,14 +83,29 @@ class Lexer:
                     find = True
                     value = match.group(0)
                     line_tokens.append(Token(type, value, line_number))
-                    line = line[len(value):]
-                    line = line.strip()
+                    position += len(value)
+                    line = line[len(value):].strip()
                     break
 
             if not find:
-                print(f"Error: Unexpected token at line {line_number} : {line}")
-                break
-        
+                column = position + 1
+                raise LexerError(f"Erro, token inesperado: '{line[0]}'", line_number + 1, column)
+
         self.list_tokens.extend(line_tokens)
 
+    def print_tokens(self):
+        for token in self.list_tokens:
+            print(token)
 
+                
+if __name__ == "__main__":
+    # Código de exemplo para teste
+    code = """
+    ,  + - * / = == != > < >= <= ( ) { } : , ; .
+    """
+    try:
+        lexer = Lexer(code)
+        lexer.tokenize()
+        lexer.print_tokens()
+    except LexerError as e:
+        print(e)

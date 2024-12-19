@@ -1,6 +1,4 @@
-# main.py
-
-from lexer import Lexer
+from lexer import Lexer, LexerError
 from parser import (
     Parser, ParserError, Program, VarDecl, FuncDecl, Block,
     Assignment, IfStatement, WhileStatement, ReturnStatement,
@@ -9,25 +7,34 @@ from parser import (
 )
 
 def main():
-    with open('test.kt', 'r') as file:
-        code = file.read()
-
-    lexer = Lexer(code)
-    lexer.tokenize()
-    tokens = lexer.list_tokens
-
-    print("Tokens gerados pelo lexer:")
-    for token in tokens:
-        print(token)
-
-    # Inicializa o parser com os tokens
-    parser = Parser(tokens)
     try:
+        # Lê o código do arquivo
+        with open('test.kt', 'r') as file:
+            code = file.read()
+
+        # Executa o lexer
+        lexer = Lexer(code)
+        lexer.tokenize()
+        tokens = lexer.list_tokens
+
+        print("Tokens gerados pelo lexer:")
+        for token in tokens:
+            print(token)
+
+    
+        # Inicializa o parser com os tokens
+        parser = Parser(tokens)
         ast = parser.parse()
+
         print("\nAST Gerada pelo parser:")
         print_ast(ast)
-    except ParserError as e:
-        print(f"\nErro de análise sintática: {e}")
+        
+    except LexerError as le:
+        print(f"Erro léxico: {le}")
+        return  # Para a execução imediatamente após o erro
+    except ParserError as pe:
+        print(f"Erro de análise sintática: {pe}")
+        return  # Para a execução imediatamente após o erro
 
 def print_ast(node, indent=0):
     prefix = ' ' * indent
