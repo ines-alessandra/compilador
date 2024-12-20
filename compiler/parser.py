@@ -267,10 +267,13 @@ class Parser:
 
     def assignment(self) -> Assignment:
         name = self.consume("IDENTIFIER", "Esperado um identificador para atribuição.")
+        # Verifica se o identificador existe no escopo atual ou global
+        self.lookup_in_scope(name.value)  # Vai levantar um erro se não existir
         self.consume("ASSIGN", "Esperado '=' em atribuição.")
         value = self.expression()
         self.consume("SEMICOLON", "Esperado ';' após atribuição.")
         return Assignment(name.value, value)
+
 
     def expression(self) -> Expression:
         return self.equality()
@@ -323,9 +326,9 @@ class Parser:
             return Literal(False)
         if self.match("IDENTIFIER"):
             identifier = self.previous().value
+            # Verifica se o identificador está declarado
             symbol = self.lookup_in_scope(identifier)
-            
-            if self.match("LPAREN"):  # É uma chamada de função
+            if self.match("LPAREN"):  # Chamada de função
                 if not symbol.get("is_function"):
                     raise ParserError(f"'{identifier}' não é uma função.", self.previous())
                 args = []
@@ -335,7 +338,7 @@ class Parser:
                         args.append(self.expression())
                 self.consume("RPAREN", "Esperado ')' após argumentos da função.")
                 return FuncCall(identifier, args)
-            else:  # É uma variável
+            else:  # Variável
                 if symbol.get("is_function"):
                     raise ParserError(f"'{identifier}' é uma função e não pode ser usado como variável.", self.previous())
                 return Identifier(identifier)
