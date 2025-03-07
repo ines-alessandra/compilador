@@ -319,10 +319,13 @@ class Parser:
 
     def primary(self) -> Expression:
         if self.match("INTEGER"):
-            return Literal(int(self.previous().value))
+            token = self.previous()
+            return Literal(int(token.value))
         if self.match("TRUE"):
+            token = self.previous()
             return Literal(True)
         if self.match("FALSE"):
+            token = self.previous()
             return Literal(False)
         if self.match("IDENTIFIER"):
             identifier = self.previous().value
@@ -365,7 +368,7 @@ class Parser:
 
     def consume_type(self) -> str:
         if self.match("INT", "BOOL"):
-            return self.previous().value
+            return self.previous().type
         raise ParserError("Esperado tipo 'Int' ou 'Bool'.")
 
     def check(self, type: str) -> bool:
