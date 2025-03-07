@@ -6,6 +6,8 @@ from parser import (
     BinaryOp, UnaryOp, Literal, Identifier, FuncCall
 )
 
+from code_generator import CodeGenerator
+
 def main():
     try:
         # Lê o código do arquivo
@@ -28,6 +30,10 @@ def main():
 
         print("\nAST Gerada pelo parser:")
         print_ast(ast)
+        generator = CodeGenerator()
+        generator.generate(ast)  # ast_root é o Program gerado pelo seu parser
+
+        
         
     except LexerError as le:
         print(f"Erro léxico: {le}")
