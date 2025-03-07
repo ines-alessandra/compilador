@@ -67,7 +67,7 @@ class Lexer:
         lines = self.code.split("\n")
         for i, line in enumerate(lines):
             
-            self.tokenize_line(line, i)
+            self.tokenize_line(line, i +1)
             
     
     def tokenize_line(self, line: str, line_number: int):

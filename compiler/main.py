@@ -9,7 +9,7 @@ from parser import (
 def main():
     try:
         # Lê o código do arquivo
-        with open('test.kt', 'r') as file:
+        with open('./teste.kt', 'r') as file:
             code = file.read()
 
         # Executa o lexer

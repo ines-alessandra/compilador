@@ -7,12 +7,12 @@ fun foo(i: Int, j : Int) : Int {
     return a;
 }
 
-const c : Int = 10 + foo(1, 2) * 20 + 4 * 2 - 1 + 5 * 10 + 2 + 3 + 3 + 2 * 2 / 1;
+const c : Int = 10 + foo(1, 2) * 20 + 4 * 2 - 1 + 5 * 10 + 2 + 3 + 3 + 2 * 2 / a;
 
 
 val a : Int = foo(1, 2);
 
-while (x < 10) {
+while (a) {
     x = x + 1;
     if (x == 5) {
         const g : Int = x;
@@ -22,7 +22,8 @@ while (x < 10) {
         continue;
     }
 }
-
+continue;
+return 3;
 fun baz(i : Int, j : Int) {
     val z : Int = i;
     if (z < 40) {
@@ -31,9 +32,10 @@ fun baz(i : Int, j : Int) {
         val teste : Bool = true;
         z = z - i - j;
     }
-    print(z, foo(1, 2), 2);
+    print(z);
+    return 5;
 }
 
 baz(10, 20);
 a = foo(foo(foo((1 + foo(1, 2)) + 1, 2), 2), (foo(1, 2) + 1) + 1);
-print(a);
+print(true);

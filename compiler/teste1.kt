@@ -54,7 +54,7 @@ fun greet(name: Int, times: Int, teste: Bool) : Int {
             a = a + 1;
             if (a == 15) {
                 print(15);
-                continue;
+                continu  e;
             } else {
                 print(b);
                 continue;
