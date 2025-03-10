@@ -38,7 +38,8 @@ class SemanticAnalyzer:
         elif isinstance(node, FuncDecl):
             self.declare_function(node)
             self.enter_scope()
-            for param_name, param_type in node.params:
+            # Agora desempacotamos três valores: nome, tipo e linha
+            for param_name, param_type, param_line in node.params:
                 self.current_scope()[param_name] = {"type": param_type, "is_const": False}
             body_type = self.analyze(node.body)
             if node.return_type != "Unit" and body_type != node.return_type:
@@ -112,7 +113,8 @@ class SemanticAnalyzer:
                     f"Chamada de função '{node.name}' com número inválido de argumentos. "
                     f"Esperado {len(params)}, recebido {len(node.args)}."
                 )
-            for ((param_name, param_type), arg) in zip(params, node.args):
+            # Desempacotando (nome, tipo, linha) para cada parâmetro
+            for ((param_name, param_type, param_line), arg) in zip(params, node.args):
                 arg_type = self.analyze(arg)
                 if arg_type != param_type:
                     raise SemanticError(
@@ -126,7 +128,6 @@ class SemanticAnalyzer:
             return "Unit"
         else:
             raise SemanticError("Nó desconhecido na AST.")
-
 
     def enter_scope(self):
         self.scope_stack.append({})

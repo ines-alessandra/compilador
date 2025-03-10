@@ -13,6 +13,10 @@ def main():
         lexer = Lexer(code)
         lexer.tokenize()
         tokens = lexer.list_tokens
+        
+        print("Tokens gerados pelo lexer:")
+        for token in tokens:
+            print(token)
 
         # Inicializa o parser com os tokens
         parser = Parser(tokens)

@@ -69,7 +69,8 @@ class CodeGenerator:
         return temp
 
     def visit_FuncDecl(self, node: FuncDecl):
-        params_str = ', '.join([f"{name}: {type_}" for name, type_ in node.params])
+    # Desempacota (nome, tipo, linha) e utiliza apenas nome e tipo
+        params_str = ', '.join([f"{name}: {type_}" for name, type_, _ in node.params])
         print(f"function {node.name}({params_str}) : {node.return_type}")
         self.visit(node.body)
         print(f"end function {node.name}")
