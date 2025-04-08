@@ -1,436 +1,577 @@
-# parser.py
-
-from typing import List, Optional
 from lexer import Token
+import json
 
-class ParserError(Exception):
-    def __init__(self, message, token: Optional[Token] = None):
-        self.message = message
-        self.token = token
-        super().__init__(self.__str__())
+Type = str  # Type alias for better readability, can be either "INT" or "BOOL"
 
-    def __str__(self):
-        if self.token:
-            return f"[Linha {self.token.line}] Erro: {self.message} (Token atual: {self.token.value})"
-        return f"Erro: {self.message}"
 
-# Nó base da AST com informação de posição
-class ASTNode:
-    def __init__(self, line=None):
-        self.line = line
-
-class Program(ASTNode):
-    def __init__(self, declarations: List[ASTNode], line=None):
-        super().__init__(line)
-        self.declarations = declarations
-
-class VarDecl(ASTNode):
-    def __init__(self, is_const: bool, name: str, var_type: str, initializer: ASTNode, line=None):
-        super().__init__(line)
-        self.is_const = is_const
-        self.name = name
-        self.var_type = var_type
-        self.initializer = initializer
-
-class FuncDecl(ASTNode):
-    def __init__(self, name: str, params: List[tuple], return_type: str = "Unit", body: ASTNode = None, line=None):
-        super().__init__(line)
-        self.name = name
-        self.params = params  # Lista de tuplas (nome, tipo, linha)
-        self.return_type = return_type
-        self.body = body
-
-class Block(ASTNode):
-    def __init__(self, declarations: List[ASTNode], line=None):
-        super().__init__(line)
-        self.declarations = declarations
-
-class Assignment(ASTNode):
-    def __init__(self, name: str, value: ASTNode, line=None):
-        super().__init__(line)
-        self.name = name
-        self.value = value
-
-class IfStatement(ASTNode):
-    def __init__(self, condition: ASTNode, then_branch: ASTNode, else_branch: Optional[ASTNode], line=None):
-        super().__init__(line)
-        self.condition = condition
-        self.then_branch = then_branch
-        self.else_branch = else_branch
-
-class WhileStatement(ASTNode):
-    def __init__(self, condition: ASTNode, body: ASTNode, line=None):
-        super().__init__(line)
-        self.condition = condition
-        self.body = body
-
-class ReturnStatement(ASTNode):
-    def __init__(self, value: ASTNode, line=None):
-        super().__init__(line)
-        self.value = value
-
-class BreakStatement(ASTNode):
-    def __init__(self, line=None):
-        super().__init__(line)
-
-class ContinueStatement(ASTNode):
-    def __init__(self, line=None):
-        super().__init__(line)
-
-class PrintStatement(ASTNode):
-    def __init__(self, value: ASTNode, line=None):
-        super().__init__(line)
-        self.value = value
-
-class Expression(ASTNode):
+class SemanticError(Exception):
     pass
 
-class BinaryOp(Expression):
-    def __init__(self, left: Expression, operator: str, right: Expression, line=None):
-        super().__init__(line)
-        self.left = left
-        self.operator = operator
-        self.right = right
 
-class UnaryOp(Expression):
-    def __init__(self, operator: str, operand: Expression, line=None):
-        super().__init__(line)
-        self.operator = operator
-        self.operand = operand
+FUNCTION = "FUNCTION"
+VARIABLE = "VARIABLE"
 
-class Literal(Expression):
-    def __init__(self, value, line=None):
-        super().__init__(line)
-        self.value = value
-
-class Identifier(Expression):
-    def __init__(self, name: str, line=None):
-        super().__init__(line)
-        self.name = name
-
-class FuncCall(Expression):
-    def __init__(self, name: str, args: List[Expression], line=None):
-        super().__init__(line)
-        self.name = name
-        self.args = args
 
 class Parser:
-    def __init__(self, tokens: List[Token]):
+    """
+    Syntactic and semantic analysis of the program. And also create three address code.
+    """
+
+    def __init__(self):
+        self.index = 0
+        self.tokens = None
+        self.current_token = None
+        self.current_scope = -1
+        self.symbol_table = []
+        self.instructions = []
+
+    def parse(self, tokens: list[Token]):
         self.tokens = tokens
-        self.current = 0
-        self.scope_stack = [{}]
-        self.loop_depth = 0  # Controla aninhamento de loops
-        self.in_function = False  # Indica se estamos dentro de uma função
+        self.current_token = self.tokens[self.index]
+        self.program()
 
-    def parse(self) -> Program:
-        declarations = []
-        while not self.is_at_end():
-            try:
-                decl = self.declaration()
-                if decl is not None:
-                    declarations.append(decl)
-            except ParserError as e:
-                print(e)
-                self.synchronize()
-        return Program(declarations, line=declarations[0].line if declarations else None)
+        if self.current_token is not None:
+            self.error()
 
-    def synchronize(self):
-        # Avança tokens até encontrar um ponto de sincronização: ';' ou '}'
-        self.advance()
-        while not self.is_at_end():
-            if self.previous().type == "SEMICOLON":
-                return
-            if self.peek() and self.peek().type == "RBRACE":
-                return
-            self.advance()
+    # <escopo de programa> ::= (<bloco>)*
+    def program(self):
+        self.enter_scope()
 
-    def enter_scope(self):
-        self.scope_stack.append({})
-    def exit_scope(self):
-        self.scope_stack.pop()
-    def add_to_scope(self, name, var_type=None, is_const=False, is_function=False, params=None, return_type=None):
-        current_scope = self.scope_stack[-1]
-        if name in current_scope:
-            raise ParserError(f"Identificador '{name}' já declarado no escopo atual.", self.peek())
-        current_scope[name] = {
-            "type": var_type,
-            "is_const": is_const,
-            "is_function": is_function,
-            "params": params,
-            "return_type": return_type,
+        self.block()
+        while self.current_token is not None:
+            self.block()
+
+        self.exit_scope()
+
+    #<bloco> :== <declaração de variável> | <imprimir> | <declaração de função/procedimento> | <condicionais> | <laço>  | <chamada da função/procedimento> |  <atribuição>
+    def block(self):
+        if self.match("CONST", "VARIABLE"):
+            self.declaration_and_assignment()
+        elif self.match("PRINT"):
+            self.print_statement()
+        elif self.match("FUNCTION"):
+            self.declaration_of_function_or_procedure()
+        elif self.match("IF"):
+            self.if_statement()
+        elif self.match("WHILE"):
+            self.while_statement()
+        elif self.match("IDENTIFIER") and self.match_next("LPAREN"):
+            self.function_or_procedure_call()
+            self.expect("SEMICOLON")
+        elif self.match("IDENTIFIER") and self.match_next("ASSIGN"):
+            self.assignment_statement()
+        #else:
+        #    self.variable_value()
+        #    self.expect("SEMICOLON")
+        else:
+            self.error()
+
+    #<escopo de laço> ::= ( <bloco> | <controle de laço>)+
+    def while_scope(self):
+        if self.match("CONST", "VARIABLE"):
+            self.declaration_and_assignment()
+        elif self.match("PRINT"):
+            self.print_statement()
+        elif self.match("FUNCTION"):
+            self.declaration_of_function_or_procedure()
+        elif self.match("IF"):
+            self.if_statement_while()
+        elif self.match("WHILE"):
+            self.while_statement()
+        elif self.match("BREAK"):
+            self.expect("BREAK")
+            self.expect("SEMICOLON")
+        elif self.match("CONTINUE"):
+            self.expect("CONTINUE")
+            self.expect("SEMICOLON")
+        elif self.match("IDENTIFIER") and self.match_next("LPAREN"):
+            self.function_or_procedure_call()
+            self.expect("SEMICOLON")
+        elif self.match("IDENTIFIER") and self.match_next("ASSIGN"):
+            self.assignment_statement()
+            #else:
+            #    self.variable_value()
+            #    self.expect("SEMICOLON")
+        else:
+            self.error()
+
+    #<escopo de função> ::= (<bloco><retorno>)+
+    def function_or_procedure_scope(self):
+        while not self.match("RBRACE", "RETURN"):
+            self.block()
+
+    #<declaração de variável> ::= <tipo de variável> <identificador> : <tipo> ; | <tipo de variável> <identificador> :  <tipo> = <valor de variável> ;
+    def declaration_and_assignment(self):
+        identifier_type = self.expect("CONST", "VARIABLE")
+        identifier = self.expect("IDENTIFIER")
+        self.expect("COLON")
+        variable_type = self.expect("INT", "BOOL")
+
+        self.check_already_declared_variable(VARIABLE, identifier)
+
+        if self.match("ASSIGN"):
+            self.expect("ASSIGN")
+            expression_type = self.expression()
+            self.check_types(variable_type.token_type, expression_type)
+
+        self.expect("SEMICOLON")
+
+        self.symbol_table[self.current_scope][identifier] = {
+            "const_or_val": identifier_type.token_type,
+            "fun_or_var": VARIABLE,
+            "variable_type": variable_type,
+            "scope": self.current_scope,
         }
 
-    def lookup_in_scope(self, name):
-        for scope in reversed(self.scope_stack):
-            if name in scope:
-                return scope[name]
-        raise ParserError(f"Identificador '{name}' não declarado.", self.peek())
+    # <atribuição> ::= <identificador> = <valor de variável> ;
+    def assignment_statement(self):
+        identifier = self.expect("IDENTIFIER")
+        variable_type = self.get_variable_type(VARIABLE, identifier)
+        identifier_type = self.get_identifier_type(VARIABLE, identifier)
 
-    def declaration(self) -> Optional[ASTNode]:
-        if self.match("VARIABLE"):  # 'val'
-            return self.var_decl(is_const=False)
-        if self.match("CONST"):  # 'const'
-            return self.var_decl(is_const=True)
-        if self.match("FUNCTION"):  # 'fun'
-            return self.func_decl()
-        return self.statement()
+        self.check_assignment(identifier_type, identifier)
 
-    def var_decl(self, is_const: bool) -> VarDecl:
-        name_token = self.consume("IDENTIFIER", "Esperado nome da variável.")
-        self.consume("COLON", "Esperado ':' após o nome da variável.")
-        var_type = self.consume_type()
-        self.consume("ASSIGN", "Esperado '=' na declaração da variável.")
-        initializer = self.expression()
-        self.consume("SEMICOLON", "Esperado ';' após a declaração da variável.")
-        
-        self.add_to_scope(name_token.value, var_type, is_const)
-        
-        return VarDecl(is_const, name_token.value, var_type, initializer, line=name_token.line)
+        self.expect("ASSIGN")
+        expression_type = self.expression()
+        self.check_types(variable_type, expression_type)
+        self.expect("SEMICOLON")
 
-    def func_decl(self) -> FuncDecl:
-        name_token = self.consume("IDENTIFIER", "Esperado nome da função.")
-        self.consume("LPAREN", "Esperado '(' após o nome da função.")
-        
-        params = []
-        if not self.check("RPAREN"):
-            params.append(self.parameter())
-            while self.match("COMMA"):
-                params.append(self.parameter())
-        self.consume("RPAREN", "Esperado ')' após parâmetros da função.")
-        
-        if self.match("COLON"):
-            return_type = self.consume_type()
-        else:
-            return_type = "Unit"
-        
-        self.add_to_scope(name_token.value, is_function=True, params=params, return_type=return_type)
-        
-        self.enter_scope()
-        for param_name, param_type, _ in params:
-            self.add_to_scope(param_name, var_type=param_type)
-        
-        prev_in_function = self.in_function
-        self.in_function = True  # Entramos no escopo de uma função
-        body = self.block()
-        self.in_function = prev_in_function
-        
-        return FuncDecl(name_token.value, params, return_type, body, line=name_token.line)
+    # <valor de variável> ::= <identificador> | <inteiro> | <booleano> | <chamada da função/procedimento> | <expressão> | ( <expressão> )
+    def variable_value(self) -> Type:
+        expression_type = None
 
-    def parameter(self) -> tuple:
-        name_token = self.consume("IDENTIFIER", "Esperado nome do parâmetro.")
-        self.consume("COLON", "Esperado ':' após o nome do parâmetro.")
-        param_type = self.consume_type()
-        return (name_token.value, param_type, name_token.line)
-
-    def block(self) -> Block:
-        lbrace_token = self.consume("LBRACE", "Esperado '{' para iniciar o bloco.")
-        self.enter_scope() 
-        declarations = []
-        while not self.check("RBRACE") and not self.is_at_end():
-            try:
-                decl = self.declaration()
-                if decl is not None:
-                    declarations.append(decl)
-            except ParserError as e:
-                print(e)
-                self.synchronize()
-        self.consume("RBRACE", "Esperado '}' para fechar o bloco.")
-        self.exit_scope()
-        return Block(declarations, line=lbrace_token.line)
-
-    def statement(self) -> ASTNode:
-        if self.match("IF"):
-            return self.if_statement()
-        if self.match("WHILE"):
-            return self.while_statement()
-        if self.match("RETURN"):
-            return self.return_statement()
-        if self.match("BREAK"):
-            if self.loop_depth == 0:
-                raise ParserError("Comando 'break' usado fora de um loop.", self.peek())
-            token = self.previous()
-            self.consume("SEMICOLON", "Esperado ';' após 'break'.")
-            return BreakStatement(line=token.line)
-        if self.match("CONTINUE"):
-            if self.loop_depth == 0:
-                raise ParserError("Comando 'continue' usado fora de um loop.", self.peek())
-            token = self.previous()
-            self.consume("SEMICOLON", "Esperado ';' após 'continue'.")
-            return ContinueStatement(line=token.line)
-        if self.match("PRINT"):
-            return self.print_statement()
-        
-        if self.peek() and self.peek().type == "IDENTIFIER":
-            if (self.current + 1) < len(self.tokens) and self.tokens[self.current + 1].type == "ASSIGN":
-                return self.assignment()
-            else:
-                return self.expression_statement()
-        
-        raise ParserError("Esperado declaração ou instrução.", self.peek())
-
-    def expression_statement(self) -> ASTNode:
-        expr = self.expression()
-        self.consume("SEMICOLON", "Esperado ';' após expressão.")
-        return expr
-
-    def if_statement(self) -> IfStatement:
-        token = self.previous()  # token 'if'
-        self.consume("LPAREN", "Esperado '(' após 'if'.")
-        condition = self.expression()
-        self.consume("RPAREN", "Esperado ')' após condição do 'if'.")
-        then_branch = self.block()
-        else_branch = None
-        if self.match("ELSE"):
-            else_branch = self.block()
-        return IfStatement(condition, then_branch, else_branch, line=token.line)
-
-    def while_statement(self) -> WhileStatement:
-        token = self.previous()  # token 'while'
-        self.consume("LPAREN", "Esperado '(' após 'while'.")
-        condition = self.expression()
-        self.consume("RPAREN", "Esperado ')' após condição do 'while'.")
-        self.loop_depth += 1
-        body = self.block()
-        self.loop_depth -= 1
-        return WhileStatement(condition, body, line=token.line)
-
-    def return_statement(self) -> ReturnStatement:
-        token = self.previous()  # token 'return'
-        if not self.in_function:
-            raise ParserError("Comando 'return' usado fora de função.", token)
-        value = self.expression()
-        self.consume("SEMICOLON", "Esperado ';' após 'return'.")
-        return ReturnStatement(value, line=token.line)
-
-    def print_statement(self) -> PrintStatement:
-        token = self.previous()  # token 'print'
-        self.consume("LPAREN", "Esperado '(' após 'print'.")
-        value = self.expression()
-        self.consume("RPAREN", "Esperado ')' após expressão do 'print'.")
-        self.consume("SEMICOLON", "Esperado ';' após 'print'.")
-        return PrintStatement(value, line=token.line)
-
-    def assignment(self) -> Assignment:
-        name_token = self.consume("IDENTIFIER", "Esperado um identificador para atribuição.")
-        self.lookup_in_scope(name_token.value)
-        self.consume("ASSIGN", "Esperado '=' em atribuição.")
-        value = self.expression()
-        self.consume("SEMICOLON", "Esperado ';' após atribuição.")
-        return Assignment(name_token.value, value, line=name_token.line)
-
-    def expression(self) -> Expression:
-        return self.equality()
-
-    def equality(self) -> Expression:
-        expr = self.comparison()
-        while self.match("EQUAL", "DIFFERENT"):
-            operator = self.previous().type
-            right = self.comparison()
-            expr = BinaryOp(expr, operator, right, line=self.previous().line)
-        return expr
-
-    def comparison(self) -> Expression:
-        expr = self.term()
-        while self.match("GREATER", "GREATER_OR_EQUAL", "LESS", "LESS_OR_EQUAL"):
-            operator = self.previous().type
-            right = self.term()
-            expr = BinaryOp(expr, operator, right, line=self.previous().line)
-        return expr
-
-    def term(self) -> Expression:
-        expr = self.factor()
-        while self.match("PLUS", "MINUS"):
-            operator = self.previous().type
-            right = self.factor()
-            expr = BinaryOp(expr, operator, right, line=self.previous().line)
-        return expr
-
-    def factor(self) -> Expression:
-        expr = self.unary()
-        while self.match("MULTIPLY", "DIVIDE"):
-            operator = self.previous().type
-            right = self.unary()
-            expr = BinaryOp(expr, operator, right, line=self.previous().line)
-        return expr
-
-    def unary(self) -> Expression:
-        if self.match("MINUS", "NOT"):
-            operator = self.previous().type
-            operand = self.unary()
-            return UnaryOp(operator, operand, line=self.previous().line)
-        return self.primary()
-
-    def primary(self) -> Expression:
-        if self.match("INTEGER"):
-            token = self.previous()
-            return Literal(int(token.value), line=token.line)
-        if self.match("TRUE"):
-            token = self.previous()
-            return Literal(True, line=token.line)
-        if self.match("FALSE"):
-            token = self.previous()
-            return Literal(False, line=token.line)
-        if self.match("IDENTIFIER"):
-            token = self.previous()
-            identifier = token.value
-            symbol = self.lookup_in_scope(identifier)
-            if self.match("LPAREN"):
-                if not symbol.get("is_function"):
-                    raise ParserError(f"'{identifier}' não é uma função.", token)
-                args = []
-                if not self.check("RPAREN"):
-                    args.append(self.expression())
-                    while self.match("COMMA"):
-                        args.append(self.expression())
-                self.consume("RPAREN", "Esperado ')' após argumentos da função.")
-                return FuncCall(identifier, args, line=token.line)
-            else:
-                if symbol.get("is_function"):
-                    raise ParserError(f"'{identifier}' é uma função e não pode ser usado como variável.", token)
-                return Identifier(identifier, line=token.line)
         if self.match("LPAREN"):
-            token = self.previous()
-            expr = self.expression()
-            self.consume("RPAREN", "Esperado ')' após expressão.")
-            return expr
+            self.expect("LPAREN")
+            expression_type = self.expression()
+            self.expect("RPAREN")
+        elif self.match("IDENTIFIER"):
+            if self.match_next("LPAREN"):
+                expression_type = self.function_or_procedure_call()
+            else:
+                identifier = self.expect("IDENTIFIER")
+                expression_type = self.get_variable_type(VARIABLE, identifier)
 
-        raise ParserError("Esperada expressão válida.", self.peek())
+        elif self.match("INTEGER"):
+            self.expect("INTEGER")
+            expression_type = "INT"
+        elif self.match("TRUE", "FALSE"):
+            self.expect("TRUE", "FALSE")
+            expression_type = "BOOL"
+        else:
+            self.error()
 
-    # Métodos auxiliares
-    def match(self, *types) -> bool:
-        for type in types:
-            if self.check(type):
-                self.advance()
-                return True
-        return False
+        return expression_type
 
-    def consume(self, type: str, message: str) -> Token:
-        if self.check(type):
-            return self.advance()
-        raise ParserError(message, self.peek())
+    #<expressão> :==  <expressão booleana> | <expressão aritmética>
+    def expression(self) -> Type:
+        #<expressão aritmética> ::= <valor de variável> <operadores aritméticos> <valor de variável>
+        expression_type = self.arithmetic_expression()
+        #<expressão booleana> ::= <expressão aritmética> <operadores booleanos> <expressão aritmética>
+        while self.match("EQUAL", "DIFFERENT", "GREATER", "GREATER_OR_EQUAL", "LESS", "LESS_OR_EQUAL"):
+            operator = self.expect("EQUAL", "DIFFERENT", "GREATER", "GREATER_OR_EQUAL", "LESS", "LESS_OR_EQUAL")
 
-    def consume_type(self) -> str:
-        if self.match("INT", "BOOL"):
-            return self.previous().type
-        raise ParserError("Esperado tipo 'Int' ou 'Bool'.", self.peek())
+            right_operand_type = self.arithmetic_expression(previous_operand_type="BOOL")
 
-    def check(self, type: str) -> bool:
-        if self.is_at_end():
+            if expression_type != right_operand_type:
+                raise SemanticError(
+                    f"Type mismatch: Cannot perform {operator} operation between {expression_type} and "
+                    f"{right_operand_type} at line {self.current_token.line}"
+                )
+
+            expression_type = "BOOL"
+
+        return expression_type
+
+    #<expressão aritmética> ::= <valor de variável> | <valor de variável> <operadores aritméticos> <valor de variável>
+    def arithmetic_expression(self, previous_operand_type="") -> Type:
+        expression_type = self.variable_value()
+        while self.match("PLUS", "MINUS", "MULTIPLY", "DIVIDE"):
+            operator = self.expect("PLUS", "MINUS", "MULTIPLY", "DIVIDE")
+            #if operator.token_type == "DIVIDE":
+            #    raise SemanticError(
+            #        f"Cannot perform division operation at line {operator.line}, float type not supported"
+            #    )
+            right_operand_type = self.variable_value()
+
+            if previous_operand_type != "":
+                if previous_operand_type != expression_type:
+                    raise SemanticError(
+                        f"Type mismatch: Cannot perform {operator} operation between {previous_operand_type} and "
+                        f"{expression_type} at line {self.current_token.line}"
+                    )
+
+            if expression_type != right_operand_type:
+                raise SemanticError(
+                    f"Type mismatch: Cannot perform {operator} operation between {expression_type} and "
+                    f"{right_operand_type} at line {self.current_token.line}"
+                )
+
+            expression_type = "INT"
+
+        return expression_type
+
+    #<imprimir> ::= print(<argumentos>);
+    def print_statement(self):
+        self.expect("PRINT")
+        self.expect("LPAREN")
+        if self.current_token.token_type != "RPAREN":
+            self.argument_list()
+        else:
+            raise SemanticError(
+                f"Cannot print empty list at line {self.current_token.line}"
+            )
+
+        self.expect("RPAREN")
+        self.expect("SEMICOLON")
+
+    #<retorno> ::= return <valor de variável> ;
+    def return_statement(self, variable_type):
+        self.expect("RETURN")
+        right_type = self.expression()
+        if variable_type.token_type != right_type:
+            raise SemanticError(
+                f"Type mismatch: Cannot return {right_type} in function with return type {variable_type.token_type} at line {self.current_token.line}"
+            )
+        self.expect("SEMICOLON")
+
+    #<declaração de função/procedimento> :== <função> | <procedimento>
+    def declaration_of_function_or_procedure(self):
+        self.expect("FUNCTION")
+        identifier = self.expect("IDENTIFIER")
+
+        self.check_already_declared_variable(FUNCTION, identifier)
+
+        self.enter_scope()
+
+        self.expect("LPAREN")
+
+        list_of_parameters = []
+        if not self.match("RPAREN"):
+            list_of_parameters = self.parameters()
+
+        self.expect("RPAREN")
+
+        #<função> ::= function <identificador> (<parâmetros>) : <tipo> {
+        #           <escopo de função>
+        #}
+        if self.match("COLON"):
+            self.expect("COLON")
+            variable_type = self.expect("INT", "BOOL")
+            self.expect("LBRACE")
+            self.function_or_procedure_scope()
+            self.return_statement(variable_type)
+        #<procedimento> ::= function <identificador> (<parâmetros>) {
+        #       (<bloco>)+
+        #}
+        else:
+            variable_type = None
+            self.expect("LBRACE")
+            self.function_or_procedure_scope()
+
+        self.expect("RBRACE")
+
+        self.symbol_table[self.current_scope - 1][identifier] = {
+            "const_or_val": None,
+            "fun_or_var": FUNCTION,
+            "variable_type": variable_type,
+            "scope": self.current_scope - 1,
+            "parameters": list_of_parameters,
+        }
+
+        self.exit_scope()
+
+    # <parâmetros> ::= ε | <identificador> <símbolo de tipo> <tipo>  | <n parâmetros>
+    def parameters(self) -> list[Type]:
+        list_of_parameters = []
+        identifier = self.expect("IDENTIFIER")
+        self.expect("COLON")
+        variable_type = self.expect("INT", "BOOL")
+        list_of_parameters.append(variable_type.token_type)
+
+        self.symbol_table[self.current_scope][identifier] = {
+            "const_or_val": "VARIABLE",
+            "fun_or_var": VARIABLE,
+            "variable_type": variable_type,
+            "scope": self.current_scope,
+        }
+
+        #<n parâmetros> ::= <identificador> : <tipo>,<n parâmetros> | <identificador> : <tipo>
+        while self.match("COMMA"):
+            self.expect("COMMA")
+            identifier = self.expect("IDENTIFIER")
+            self.expect("COLON")
+            variable_type = self.expect("INT", "BOOL")
+            list_of_parameters.append(variable_type.token_type)
+            self.symbol_table[self.current_scope][identifier] = {
+                "const_or_val": "VARIABLE",
+                "fun_or_var": VARIABLE,
+                "variable_type": variable_type,
+                "scope": self.current_scope,
+            }
+
+        return list_of_parameters
+
+    #<chamada da função/procedimento> ::= <identificador>(<argumentos>)
+    def function_or_procedure_call(self) -> Type:
+        identifier = self.expect("IDENTIFIER")
+
+        list_of_parameters = None
+        for scope in self.symbol_table:
+            for token in scope.keys():
+                if token.value == identifier.value and scope[token]["fun_or_var"] == FUNCTION:
+                    list_of_parameters = scope[token]["parameters"]
+                    break
+
+        if list_of_parameters is None:
+            raise SemanticError(
+                f"Function '{identifier.value}' in line {identifier.line} not declared"
+            )
+
+        self.expect("LPAREN")
+
+        list_of_arguments = []
+        if not self.match("RPAREN"):
+            list_of_arguments = self.argument_list()
+
+        self.expect("RPAREN")
+
+        if len(list_of_parameters) != len(list_of_arguments):
+            raise SemanticError(
+                f"Invalid number of arguments in function '{identifier.value}' at line {identifier.line}. "
+                f"Expected {len(list_of_parameters)} parameters, found {len(list_of_arguments)}"
+            )
+
+        for i in range(len(list_of_parameters)):
+            if list_of_parameters[i] != list_of_arguments[i]:
+                raise SemanticError(
+                    f"Type mismatch: Cannot assign {list_of_arguments[i]} to {list_of_parameters[i]} "
+                    f"parameter in function '{identifier.value}' at line {identifier.line}"
+                )
+
+        expression_type = self.get_variable_type(FUNCTION, identifier)
+
+        return expression_type
+
+    #<argumentos> ::= ε | <valor de variável> | <próx argumentos>
+    def argument_list(self) -> list[Type]:
+        list_of_arguments = [self.expression()]
+
+        #<próx argumentos> ::= <expressão>,<próx argumentos> | <expressão>
+        while self.match("COMMA"):
+            self.expect("COMMA")
+            list_of_arguments.append(self.expression())
+
+        return list_of_arguments
+
+    #<condicionais> ::= <if> | <if e else>
+    def if_statement(self):
+        #<if> ::= if (<expressão booleana>) {
+        #   (<bloco>)+
+        #}
+        self.expect("IF")
+        self.expect("LPAREN")
+        expression_type = self.expression()
+        if expression_type != "BOOL":
+            raise SemanticError(
+                f"Type mismatch: Cannot use {expression_type} in IF statement at line {self.current_token.line}"
+            )
+        self.expect("RPAREN")
+        self.expect("LBRACE")
+        self.conditional_scope()
+        self.expect("RBRACE")
+
+        #<if e else> :== if (<expressão booleana>) {
+        #        (<bloco>)+
+        #}
+        #else {
+        #    (<bloco>)+
+        #}
+        if self.current_token is not None and self.match("ELSE"):
+            self.expect("ELSE")
+            self.expect("LBRACE")
+            self.conditional_scope()
+            self.expect("RBRACE")
+
+    # (<bloco>)+
+    def conditional_scope(self):
+        # REMOVE THIS IF ERROR WITH SCOPES
+        self.enter_scope()
+
+        while not self.match("RBRACE") and not self.match("ELSE"):
+            self.block()
+        # REMOVE THIS IF ERROR WITH SCOPES
+        self.exit_scope()
+
+    #<laço> ::= while (<expressão booleana>) {
+    #       <escopo do laço>
+    #}
+
+    def while_statement(self):
+        self.expect("WHILE")
+        self.expect("LPAREN")
+        expression_type = self.expression()
+        if expression_type != "BOOL":
+            raise SemanticError(
+                f"Type mismatch: Cannot use {expression_type} in WHILE statement at line {self.current_token.line}"
+            )
+        self.expect("RPAREN")
+        self.expect("LBRACE")
+        self.loop_scope()
+        self.expect("RBRACE")
+
+    #<escopo do laço>
+    def loop_scope(self):
+        self.enter_scope()
+
+        while not self.match("RBRACE"):
+            self.while_scope()
+
+        self.exit_scope()
+
+    # This is the same as the if_statment, but it uses the conditional_scope_while instead of block to allow break and continue;
+    def if_statement_while(self):
+        self.expect("IF")
+        self.expect("LPAREN")
+        expression_type = self.expression()
+        if expression_type != "BOOL":
+            raise SemanticError(
+                f"Type mismatch: Cannot use {expression_type} in IF statement at line {self.current_token.line}"
+            )
+        self.expect("RPAREN")
+        self.expect("LBRACE")
+        self.conditional_scope_while()
+        self.expect("RBRACE")
+        if self.current_token is not None and self.match("ELSE"):
+            self.expect("ELSE")
+            self.expect("LBRACE")
+            self.conditional_scope_while()
+            self.expect("RBRACE")
+
+    # This is the same as the conditional_scope, but it uses the while_scope instead of block to allow break and continue;
+    def conditional_scope_while(self):
+        self.enter_scope()
+
+        while not self.match("RBRACE") and not self.match("ELSE"):
+            self.while_scope()
+
+        self.exit_scope()
+
+    ############################################ UTILS ################################################################
+
+    def check_already_declared_variable(self, identifier_type, identifier: Token):
+        # check if the variable has already been declared in the current scope or in the parent scopes
+        for scope in reversed(self.symbol_table):
+            for token in scope.keys():
+                if (token.value == identifier.value and scope[token]["fun_or_var"] == identifier_type and
+                        scope[token]["scope"] == self.current_scope):
+                    raise SemanticError(
+                        f"{identifier_type} '{identifier.value}' in line {identifier.line} "
+                        f"already declared in line {token.line}"
+                    )
+
+    def check_assignment(self, identifier_type, identifier: Token):
+        if identifier_type is None or identifier_type == "CONST":
+            raise SemanticError(
+                f"Variable {identifier} at line {identifier.line} cannot be assigned to a value because its constant type"
+            )
+
+    def consume_token(self):
+        token = self.current_token
+        self.index += 1
+        if self.index < len(self.tokens):
+            self.current_token = self.tokens[self.index]
+        else:
+            self.current_token = None
+        if token.token_type not in ["CONST", "VARIABLE", "COLON", "INT", "BOOL"]:
+            self.instructions.append(token)
+        return token
+
+    def expect(self, *expected_token_types):
+        if self.current_token:
+            if self.current_token.token_type not in expected_token_types:
+                raise SyntaxError(
+                    f"Expected one of {expected_token_types} at line {self.current_token.line}, but found {self.current_token.token_type}")
+            return self.consume_token()
+        else:
+            raise SyntaxError(
+                f"Expected {expected_token_types}, but found EOF at line {self.tokens[-1].line}"
+            )
+
+    def get_variable_type(self, identifier_type, variable_token: Token) -> Type | None:
+        for scope in reversed(self.symbol_table):
+            for token in scope.keys():
+                if token.value == variable_token.value and scope[token]["fun_or_var"] == identifier_type:
+                    if scope[token]["variable_type"] == None:
+                        return None
+                    return scope[token]["variable_type"].token_type
+
+        raise SemanticError(
+            f"Variable '{variable_token.value}' used before declaration at line {variable_token.line}"
+        )
+
+    def get_identifier_type(self, identifier_type, variable_token: Token) -> Type:
+        for scope in reversed(self.symbol_table):
+            for token in scope.keys():
+                if token.value == variable_token.value and scope[token]["fun_or_var"] == identifier_type:
+                    return scope[token]["const_or_val"]
+
+        raise SemanticError(
+            f"Variable '{variable_token.value}' used before declaration at line {variable_token.line}"
+        )
+
+    @staticmethod
+    def check_types(left_type: Type, right_type: Type):
+        if left_type == "INT" and right_type != "INT":
+            raise SemanticError(
+                f"Type mismatch: Cannot assign {right_type} to INT variable"
+            )
+        elif left_type == "BOOL" and right_type != "BOOL":
+            raise SemanticError(
+                f"Type mismatch: Cannot assign {right_type} to BOOL variable"
+            )
+
+    def error(self):
+        raise SyntaxError(
+            f"Syntax error at line {self.current_token.line} unexpected token {self.current_token}"
+        )
+
+    def enter_scope(self):
+        self.current_scope += 1
+        self.symbol_table.insert(self.current_scope, {})
+
+    def exit_scope(self):
+        self.symbol_table.pop()
+        self.current_scope -= 1
+
+    def match_next(self, *expected_token_types):
+        if self.index + 1 < len(self.tokens):
+            return self.tokens[self.index + 1].token_type in expected_token_types
+        else:
             return False
-        return self.peek().type == type
 
-    def advance(self) -> Token:
-        if not self.is_at_end():
-            self.current += 1
-        return self.previous()
+    def match(self, *expected_token_types):
+        token = self.current_token
+        return token.token_type in expected_token_types
+    def to_dict(self, node):
+        """Converte um nó da AST em um dicionário serializável."""
+        if isinstance(node, dict):
+            return {k: self.to_dict(v) for k, v in node.items()}
+        elif isinstance(node, list):
+            return [self.to_dict(item) for item in node]
+        elif hasattr(node, '__dict__'):
+            # Para objetos, pega seus atributos
+            result = {}
+            for key, value in node.__dict__.items():
+                # Ignora atributos internos ou que não queremos serializar
+                if not key.startswith('_'):
+                    result[key] = self.to_dict(value)
+            return result
+        else:
+            # Tipos básicos (str, int, float, bool, None)
+            return node
 
-    def is_at_end(self) -> bool:
-        return self.current >= len(self.tokens)
-
-    def peek(self) -> Optional[Token]:
-        if self.is_at_end():
-            return None
-        return self.tokens[self.current]
-
-    def previous(self, steps=1) -> Token:
-        return self.tokens[self.current - steps]
+    def save_ast_to_file(self, ast, filename):
+        """Salva a AST em um arquivo JSON."""
+        ast_dict = self.to_dict(ast)
+        with open(filename, 'w') as f:
+            json.dump(ast_dict, f, indent=2, ensure_ascii=False)

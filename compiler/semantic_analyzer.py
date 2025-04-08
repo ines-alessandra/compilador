@@ -1,6 +1,6 @@
 # semantic_analyzer.py
 
-from parser import (
+from compiler.parser_orginal import (
     Program, VarDecl, FuncDecl, Block, Assignment, IfStatement,
     WhileStatement, ReturnStatement, BreakStatement, ContinueStatement,
     PrintStatement, BinaryOp, UnaryOp, Literal, Identifier, FuncCall

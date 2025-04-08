@@ -1,6 +1,5 @@
 import re
 from typing import List, Tuple
-from Token import Token
 
 tokens = [
     # reserved tokens
@@ -49,63 +48,64 @@ tokens = [
     (r"\b[0-9]+\b", "INTEGER"),
 ]
 
-class LexerError(Exception):
-    def __init__(self, message: str, line: int, column: int):
-        self.message = message
+
+class Token:
+    def __init__(self, token_type, value, line):
+        self.token_type = token_type
+        self.value = value
         self.line = line
-        self.column = column
-        super().__init__(f"{message} (linha {line}, coluna {column})")
+
+    def __repr__(self):
+        return f"Token({self.token_type}, '{self.value}', {self.line})"
 
 
 class Lexer:
     def __init__(self, code: str):
         self.code = code
-        self.list_tokens: list[Token] = []
-        self.rules: List[Tuple[str, str]] = tokens
-    
-    def tokenize(self):
-        lines = self.code.split("\n")
-        for i, line in enumerate(lines):
-            
-            self.tokenize_line(line, i +1)
-            
-    
-    def tokenize_line(self, line: str, line_number: int):
-        line_tokens = []
-        line = line.strip()
-        position = 0
+        self.tokens_list: list[Token] = []
+        #self.symbol_table: dict[Token, dict[str, Any]] = {}
+        self.patterns: List[Tuple[str, str]] = tokens
 
+    def tokenize(self):
+        #Itera linha a linha
+        for current_line, line in enumerate(self.code.splitlines()):
+            line_tokens = self.__line_to_tokens(line, current_line + 1)
+            self.tokens_list.extend(line_tokens)
+
+    def __line_to_tokens(self, line: str, line_number: int) -> List[Token]:
+        line = line.strip()
+        line_tokens = []
+
+        #Percorre a linha
         while line:
-            find = False
-            for rule, type in self.rules:
-                match = re.match(rule, line)
+            matched = False
+
+            #Verifica se pelo menos uma das expressões regulares é aceita
+            for pattern, token_type in self.patterns:
+                match = re.match(pattern, line)
                 if match:
-                    find = True
+                    matched = True
                     value = match.group(0)
-                    line_tokens.append(Token(type, value, line_number))
-                    position += len(value)
+                    token = Token(token_type=token_type, value=value, line=line_number)
+
+                    #self.__handle_token(token, line_number)
+
+                    line_tokens.append(token)
+                    # Corta a parte do token que foi aceita e espaços vazios
                     line = line[len(value):].strip()
                     break
 
-            if not find:
-                column = position + 1
-                raise LexerError(f"Erro, token inesperado: '{line[0]}'", line_number + 1, column)
+            if not matched:
+                raise ValueError(f"Invalid syntax at line {line_number} >>>>> {line}")
 
-        self.list_tokens.extend(line_tokens)
+        return line_tokens
 
-    def print_tokens(self):
-        for token in self.list_tokens:
-            print(token)
-
-                
-if __name__ == "__main__":
-    # Código de exemplo para teste
-    code = """
-    ,  + - * / = == != > < >= <= ( ) { } : , ; .
-    """
-    try:
-        lexer = Lexer(code)
-        lexer.tokenize()
-        lexer.print_tokens()
-    except LexerError as e:
-        print(e)
+    #def __handle_token(self, token: Token, line_number: int):
+    #    if token.token_type == "IDENTIFIER":
+    #        self.symbol_table[token] = {
+    #            "identifier_type": None,
+    #            "variable_type": None,
+    #            "variable_value": None,
+    #            "scope": None,
+    #            "line": line_number,
+    #        }

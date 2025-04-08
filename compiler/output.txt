@@ -1,0 +1,13 @@
+x = 0
+L0:
+if x >= 10 goto L1
+t0 = x + 1
+x = t0
+if x != 5 goto L2
+g = x
+goto L1
+L2:
+g = 10
+goto L0
+goto L0
+L1:
