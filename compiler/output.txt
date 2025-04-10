@@ -1,3 +1,4 @@
+begin: 
 x = 0
 L0:
 if x >= 10 goto L1
@@ -11,3 +12,4 @@ g = 10
 goto L0
 goto L0
 L1:
+end
