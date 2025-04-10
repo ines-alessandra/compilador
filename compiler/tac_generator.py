@@ -62,21 +62,22 @@ class ThreeAddressCodeGenerator:
         elif self.match("BREAK"):
             self.expect("BREAK")
             self.expect("SEMICOLON")
+            # Um break gera um salto para fora; portanto, evita-se emitir o goto final
+            self.should_fallthrough = False
             self.file.write(f"goto L{break_label}\n")
         elif self.match("CONTINUE"):
             self.expect("CONTINUE")
             self.expect("SEMICOLON")
+            # Um continue gera o salto para o topo; desativa o salto automático adicional
+            self.should_fallthrough = False
             self.file.write(f"goto L{continue_label}\n")
         elif self.match("IDENTIFIER") and self.match_next("LPAREN"):
             self.function_or_procedure_call()
             self.expect("SEMICOLON")
         elif self.match("IDENTIFIER") and self.match_next("ASSIGN"):
             self.assign()
-            # else:
-            #    self.variable_value()
-            #    self.expect("SEMICOLON")
         else:
-            raise Exception(f"Unknown token {self.current_token.token_type} at line {self.current_token.line}")
+            self.consume_token() 
 
     def assign(self):
         identifier = self.expect("IDENTIFIER")
@@ -111,20 +112,27 @@ class ThreeAddressCodeGenerator:
         self.enter_scope()
         self.expect("FUNCTION")
         identifier = self.expect("IDENTIFIER")
+        self.expect("LPAREN")
         params = []
+
         while not self.match("RPAREN"):
-            if not self.match("COMMA", "RPAREN", "LPAREN" ):
+            if not self.match("COMMA"):
                 params.append(self.consume_token().value)
             else:
                 self.consume_token()
+        self.expect("RPAREN")
+        self.expect("LBRACE")  # ← importante
 
-        params_str = ", ".join(params)
-        self.file.write(f"\nfunction {identifier.value}({params_str}):\n")
+        self.file.write(f"\nfunction {identifier.value}({', '.join(params)}):\n")
+
         while not self.match("RBRACE"):
             self.block()
 
+        self.expect("RBRACE")  # ← isso garante que consome o fim da função
+
         self.file.write(f"end_function\n\n")
         self.exit_scope()
+
 
     def return_statement(self):
         self.expect("RETURN")
@@ -283,6 +291,9 @@ class ThreeAddressCodeGenerator:
         self.expect("LPAREN")
         continue_label = self.get_label()
         break_label = self.get_label()
+        # Inicializa a flag como True; se o loop emitir um salto (continue/break), ela será setada para False
+        self.should_fallthrough = True
+
         expression = self.expression(return_inverted=True)
         self.file.write(f"L{continue_label}:\n")
         if len(expression.split(" ")) == 1:
@@ -293,7 +304,11 @@ class ThreeAddressCodeGenerator:
         self.expect("LBRACE")
         self.loop_scope(continue_label, break_label)
         self.expect("RBRACE")
-        self.file.write(f"goto L{continue_label}\n")
+        
+        # Somente se nenhuma instrução no corpo gerou um salto explícito,
+        # emitimos o goto para voltar à verificação da condição.
+        if self.should_fallthrough:
+            self.file.write(f"goto L{continue_label}\n")
         self.file.write(f"L{break_label}:\n")
 
     # <escopo do laço>
@@ -336,6 +351,7 @@ class ThreeAddressCodeGenerator:
             self.while_scope(continue_label, break_label)
 
         self.exit_scope()
+
 
     def precedence(self, op):
         if op == '+' or op == '-':

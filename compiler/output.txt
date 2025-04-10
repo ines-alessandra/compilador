@@ -1,7 +1,37 @@
-begin: 
-x = 0
+x = 10
+x = 1000
+y = x
+
+function foo(i, j):
+a = 40
+return a
+end_function
+
+param 1
+param 2
+t0 = call foo,2
+
+a = t0
+param 1
+param 2
+t1 = call foo,2
+
+t2 = t1 * 20
+t3 = 10 + t2
+t4 = 4 * 2
+t5 = t3 + t4
+t6 = t5 - 1
+t7 = 5 * 10
+t8 = t6 + t7
+t9 = t8 + 2
+t10 = t9 + 3
+t11 = t10 + 3
+t12 = 2 * 2
+t13 = t12 / a
+t14 = t11 + t13
+c = t14
 L0:
-if x >= 10 goto L1
+if a == 0 goto L1
 t0 = x + 1
 x = t0
 if x != 5 goto L2
@@ -10,6 +40,56 @@ goto L1
 L2:
 g = 10
 goto L0
-goto L0
 L1:
-end
+
+function baz(i, j):
+z = i
+if z >= 40 goto L3
+t0 = 10 + 1
+t1 = z + i
+t2 = t1 + t0
+t3 = j * 10
+t4 = t2 + t3
+z = t4
+goto L4
+L3:
+teste = true
+t0 = z - i
+t1 = t0 - j
+z = t1
+L4:
+param z
+call print,1
+return 5
+end_function
+
+param 10
+param 20
+call baz,2
+param 1
+param 2
+t15 = call foo,2
+
+t16 = 1 + t15
+t17 = t16 + 1
+param t17
+param 2
+t18 = call foo,2
+
+param t18
+param 2
+t19 = call foo,2
+
+param 1
+param 2
+t20 = call foo,2
+
+t21 = t20 + 1
+t22 = t21 + 1
+param t19
+param t22
+t23 = call foo,2
+
+a = t23
+param true
+call print,1

@@ -7,12 +7,10 @@ fun foo(i: Int, j : Int) : Int {
     return a;
 }
 
+val a : Int = foo(1, 2);
 const c : Int = 10 + foo(1, 2) * 20 + 4 * 2 - 1 + 5 * 10 + 2 + 3 + 3 + 2 * 2 / a;
 
-
-val a : Int = foo(1, 2);
-
-while (a) {
+while (a != 0) {
     x = x + 1;
     if (x == 5) {
         const g : Int = x;
@@ -22,9 +20,8 @@ while (a) {
         continue;
     }
 }
-continue;
-return 3;
-fun baz(i : Int, j : Int) {
+
+fun baz(i : Int, j : Int) : Int {
     val z : Int = i;
     if (z < 40) {
         z = z + i + (10 + 1) + j * 10;
