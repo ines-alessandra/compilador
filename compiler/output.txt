@@ -60,7 +60,6 @@ z = t1
 L4:
 param z
 call print,1
-return 5
 end_function
 
 param 10

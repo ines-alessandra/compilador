@@ -5,7 +5,7 @@ from tac_generator import ThreeAddressCodeGenerator
 def main():
     try:
         # Lê o código do arquivo
-        with open('./teste3.kt', 'r') as file:
+        with open('./teste2.kt', 'r') as file:
             code = file.read()
 
         # Executa o lexer

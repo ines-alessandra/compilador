@@ -21,7 +21,7 @@ while (a != 0) {
     }
 }
 
-fun baz(i : Int, j : Int) : Int {
+fun baz(i : Int, j : Int) {
     val z : Int = i;
     if (z < 40) {
         z = z + i + (10 + 1) + j * 10;
@@ -30,7 +30,7 @@ fun baz(i : Int, j : Int) : Int {
         z = z - i - j;
     }
     print(z);
-    return 5;
+   
 }
 
 baz(10, 20);

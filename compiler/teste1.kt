@@ -5,6 +5,7 @@ print(a);
 b = false;
 
 if (a > 15) {
+    print(b);
     print(true);
 } else {
     print(false);
@@ -12,8 +13,11 @@ if (a > 15) {
 
 while (a != 0) {
     print(a);
+    if( a == 2){
+        continue;
+    }
     a = a - 1;
-    break;
+   
 }
 
 fun multiply(x: Int, y: Int) : Int {

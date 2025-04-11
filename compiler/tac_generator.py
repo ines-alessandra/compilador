@@ -274,12 +274,12 @@ class ThreeAddressCodeGenerator:
 
     # (<bloco>)+
     def conditional_scope(self):
-        # REMOVE THIS IF ERROR WITH SCOPES
+       
         self.enter_scope()
 
         while not self.match("RBRACE") and not self.match("ELSE"):
             self.block()
-        # REMOVE THIS IF ERROR WITH SCOPES
+       
         self.exit_scope()
 
     # <laço> ::= while (<expressão booleana>) {
